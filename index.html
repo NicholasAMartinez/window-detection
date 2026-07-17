@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#07130f" />
+    <meta
+      name="description"
+      content="Private, on-device window detection for images, video, and live camera feeds."
+    />
+    <title>Window Vision — On-device window detection</title>
+    <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+    <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
+    <link rel="stylesheet" href="styles.css" />
+    <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.27.0/dist/ort.min.js"></script>
+    <script src="app.js" defer></script>
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="brand" href="#" aria-label="Window Vision home">
+        <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+        <span>Window <b>Vision</b></span>
+      </a>
+      <div class="privacy-pill"><span></span> Runs privately on your device</div>
+    </header>
+
+    <main>
+      <section class="intro">
+        <p class="eyebrow">ON-DEVICE COMPUTER VISION</p>
+        <h1>Find every <em>window.</em></h1>
+        <p class="lede">
+          Upload a photo or video, or point your camera. Detection happens in your browser—your media
+          never leaves this device.
+        </p>
+      </section>
+
+      <section class="workspace" aria-label="Detection workspace">
+        <div class="viewer-column">
+          <div id="viewer" class="viewer is-empty" data-testid="viewer">
+            <canvas id="outputCanvas" aria-label="Detection preview"></canvas>
+            <video id="sourceVideo" muted playsinline></video>
+            <img id="sourceImage" alt="Selected media" />
+
+            <div id="emptyState" class="empty-state">
+              <div class="scan-icon" aria-hidden="true">
+                <span></span><span></span><span></span><span></span><i></i>
+              </div>
+              <h2>Choose something to inspect</h2>
+              <p>Drop an image or video here, or use this device’s camera.</p>
+              <div class="empty-actions">
+                <label class="button primary" for="mediaInput">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4m0 0L7 9m5-5 5 5M5 14v5h14v-5" /></svg>
+                  Upload media
+                </label>
+                <button id="cameraEmptyButton" class="button secondary" type="button">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h3l1.4-2h7.2L17 7h3v12H4V7Z" /><circle cx="12" cy="13" r="4" /></svg>
+                  Use camera
+                </button>
+              </div>
+              <p class="formats">JPG, PNG, WEBP, MP4, MOV, and WEBM</p>
+            </div>
+
+            <div id="loadingOverlay" class="loading-overlay" hidden>
+              <span class="spinner"></span>
+              <strong id="loadingTitle">Loading model</strong>
+              <small id="loadingDetail">Preparing ONNX Runtime…</small>
+            </div>
+
+            <div id="dropOverlay" class="drop-overlay" hidden>Drop to detect</div>
+          </div>
+
+          <div class="viewer-toolbar">
+            <div class="toolbar-actions">
+              <label class="icon-button" for="mediaInput" title="Upload media">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4m0 0L7 9m5-5 5 5M5 14v5h14v-5" /></svg>
+                <span>Upload</span>
+              </label>
+              <input id="mediaInput" type="file" accept="image/*,video/*" />
+              <button id="cameraButton" class="icon-button" type="button">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h3l1.4-2h7.2L17 7h3v12H4V7Z" /><circle cx="12" cy="13" r="4" /></svg>
+                <span>Camera</span>
+              </button>
+              <button id="captureButton" class="icon-button" type="button" hidden>
+                <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8" /><circle cx="12" cy="12" r="4" /></svg>
+                <span>Photo</span>
+              </button>
+              <button id="playButton" class="icon-button" type="button" hidden>
+                <svg id="playIcon" viewBox="0 0 24 24" aria-hidden="true"><path d="m8 5 11 7-11 7V5Z" /></svg>
+                <span id="playLabel">Play</span>
+              </button>
+            </div>
+            <span id="sourceLabel" class="source-label">No media selected</span>
+          </div>
+        </div>
+
+        <aside class="control-panel" aria-label="Detection controls">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">DETECTION</p>
+              <h2>Model controls</h2>
+            </div>
+            <span id="modelBadge" class="model-badge loading"><i></i> Loading</span>
+          </div>
+
+          <div class="control-group">
+            <div class="control-label">
+              <label for="confidence">Confidence threshold</label>
+              <output id="confidenceValue" for="confidence">45%</output>
+            </div>
+            <input id="confidence" type="range" min="10" max="90" value="45" step="5" />
+            <div class="range-labels"><span>More results</span><span>More certain</span></div>
+          </div>
+
+          <div class="control-group compact">
+            <div class="control-label">
+              <div>
+                <label for="liveToggle">Live detection</label>
+                <p>Continuously scan video and camera frames.</p>
+              </div>
+              <label class="switch">
+                <input id="liveToggle" type="checkbox" checked />
+                <span></span>
+              </label>
+            </div>
+          </div>
+
+          <div class="stats" aria-live="polite">
+            <div><span>Windows found</span><strong id="detectionCount">—</strong></div>
+            <div><span>Inference time</span><strong id="inferenceTime">—</strong></div>
+            <div><span>Processing rate</span><strong id="processingRate">—</strong></div>
+          </div>
+
+          <div class="model-info">
+            <span class="window-swatch"></span>
+            <div><strong>Window</strong><small>YOLO · ONNX · 640 × 640</small></div>
+          </div>
+
+          <p id="statusMessage" class="status-message" role="status">
+            The model is downloading. You can choose media while it gets ready.
+          </p>
+        </aside>
+      </section>
+
+      <section class="how-it-works" aria-label="How it works">
+        <div><b>01</b><span><strong>Choose a source</strong><small>Image, video, or camera</small></span></div>
+        <div><b>02</b><span><strong>Detect locally</strong><small>ONNX runs in your browser</small></span></div>
+        <div><b>03</b><span><strong>See the result</strong><small>Windows appear instantly</small></span></div>
+      </section>
+    </main>
+
+    <footer>
+      <span>Window Vision</span>
+      <span>Media stays on your device · No account required</span>
+    </footer>
+  </body>
+</html>
