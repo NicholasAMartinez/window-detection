@@ -45,8 +45,9 @@ h1 em { color: var(--green-dark); font-style: normal; }
 .viewer-column { min-width: 0; border-right: 1px solid var(--line); }
 .viewer { position: relative; display: grid; place-items: center; aspect-ratio: 4 / 3; min-height: 390px; overflow: hidden; background: #0b1511; }
 .viewer.is-empty { background-color: #f2f6f2; background-image: linear-gradient(rgba(20, 65, 45, .035) 1px, transparent 1px), linear-gradient(90deg, rgba(20, 65, 45, .035) 1px, transparent 1px); background-size: 28px 28px; }
-#outputCanvas { display: none; width: 100%; height: 100%; object-fit: contain; }
-#sourceVideo, #sourceImage { display: none; }
+#outputCanvas { display: none; position: relative; z-index: 1; width: 100%; height: 100%; object-fit: contain; pointer-events: none; }
+#sourceVideo { display: none; position: absolute; inset: 0; z-index: 0; width: 100%; height: 100%; object-fit: contain; }
+#sourceImage { display: none; }
 .empty-state { text-align: center; max-width: 470px; padding: 30px; }
 .empty-state h2 { margin: 24px 0 8px; font: 600 23px Manrope, sans-serif; }
 .empty-state > p { margin: 0; color: var(--muted); font-size: 14px; }

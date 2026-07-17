@@ -1,6 +1,6 @@
 "use strict";
 
-const MODEL_URL = "best.onnx";
+const MODEL_URLS = { int8: "best.int8.onnx", fp32: "best.onnx" };
 const MODEL_SIZE = 640;
 const CLASS_NAMES = ["window"];
 const BOX_COLOR = "#b8ff50";
@@ -27,6 +27,8 @@ const elements = {
   confidence: document.querySelector("#confidence"),
   confidenceValue: document.querySelector("#confidenceValue"),
   liveToggle: document.querySelector("#liveToggle"),
+  fastModelToggle: document.querySelector("#fastModelToggle"),
+  modelDescription: document.querySelector("#modelDescription"),
   badge: document.querySelector("#modelBadge"),
   count: document.querySelector("#detectionCount"),
   time: document.querySelector("#inferenceTime"),
@@ -49,6 +51,7 @@ let inferenceRunning = false;
 let lastInferenceAt = 0;
 let lastDetections = [];
 let lastTransform = null;
+let modelLoadVersion = 0;
 
 function setStatus(message, type = "normal") {
   elements.status.textContent = message;
@@ -65,17 +68,48 @@ function hideLoading() {
   elements.loading.hidden = true;
 }
 
-async function loadModel() {
+async function loadModel(preferredModel = "int8") {
+  const loadVersion = ++modelLoadVersion;
+  const previousSession = session;
+  session = null;
+  showLoading("Loading model", preferredModel === "int8" ? "Preparing the fast INT8 detector…" : "Preparing the full-quality detector…");
+  elements.badge.className = "model-badge loading";
+  elements.badge.innerHTML = "<i></i> Loading";
+
   try {
     ort.env.wasm.wasmPaths = ORT_CDN;
     ort.env.wasm.numThreads = Math.min(4, navigator.hardwareConcurrency || 1);
-    session = await ort.InferenceSession.create(MODEL_URL, {
-      executionProviders: ["wasm"],
-      graphOptimizationLevel: "all",
-    });
+    // Keep CPU inference off the UI thread so camera/video presentation remains responsive.
+    ort.env.wasm.proxy = true;
+
+    const candidates = preferredModel === "int8" ? ["int8", "fp32"] : ["fp32"];
+    let loadedModel = null;
+    let loadError = null;
+    for (const modelType of candidates) {
+      try {
+        session = await ort.InferenceSession.create(MODEL_URLS[modelType], {
+          executionProviders: ["wasm"],
+          graphOptimizationLevel: "all",
+        });
+        loadedModel = modelType;
+        break;
+      } catch (error) {
+        loadError = error;
+      }
+    }
+    if (!session) throw loadError || new Error("No model could be loaded");
+    if (loadVersion !== modelLoadVersion) {
+      await session.release();
+      return;
+    }
+    if (previousSession) await previousSession.release();
+
+    const isInt8 = loadedModel === "int8";
+    elements.fastModelToggle.checked = isInt8;
+    elements.modelDescription.textContent = `YOLO · ONNX ${isInt8 ? "INT8" : "FP32"} · 640 × 640`;
     elements.badge.className = "model-badge";
-    elements.badge.innerHTML = "<i></i> Ready";
-    setStatus("Ready. Choose media or start the camera to detect windows.");
+    elements.badge.innerHTML = `<i></i> ${isInt8 ? "Fast" : "Quality"}`;
+    setStatus(`${isInt8 ? "Fast INT8" : "Full-quality FP32"} model ready.`);
     if (currentMode === "image") await runImageDetection();
     if (currentMode === "video" || currentMode === "camera") startRenderLoop();
   } catch (error) {
@@ -101,6 +135,7 @@ function releaseCurrentSource() {
   elements.video.srcObject = null;
   elements.video.removeAttribute("src");
   elements.video.load();
+  elements.video.style.display = "none";
   if (mediaUrl) URL.revokeObjectURL(mediaUrl);
   mediaUrl = null;
 }
@@ -110,6 +145,7 @@ function prepareViewer(mode, label) {
   elements.viewer.classList.remove("is-empty");
   elements.empty.hidden = true;
   elements.canvas.style.display = "block";
+  elements.video.style.display = mode === "video" || mode === "camera" ? "block" : "none";
   elements.sourceLabel.textContent = label;
   elements.capture.hidden = mode !== "camera";
   elements.play.hidden = mode !== "video";
@@ -127,7 +163,8 @@ function drawFrame(source) {
   const height = source.videoHeight || source.naturalHeight;
   if (!width || !height) return;
   setCanvasSize(width, height);
-  displayContext.drawImage(source, 0, 0, width, height);
+  if (currentMode === "image") displayContext.drawImage(source, 0, 0, width, height);
+  else displayContext.clearRect(0, 0, width, height);
   drawDetections(lastDetections);
 }
 
@@ -236,14 +273,15 @@ async function runImageDetection() {
 
 function startRenderLoop() {
   cancelAnimationFrame(animationId);
-  const tick = async (timestamp) => {
+  const tick = (timestamp) => {
     if (currentMode !== "video" && currentMode !== "camera") return;
     if (elements.video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
       drawFrame(elements.video);
       const shouldInfer = session && elements.liveToggle.checked && !elements.video.paused;
       if (shouldInfer && !inferenceRunning && timestamp - lastInferenceAt > 80) {
         lastInferenceAt = timestamp;
-        await detect(elements.video);
+        // Start inference independently. The next presentation frame is never gated on this promise.
+        void detect(elements.video);
       }
     }
     animationId = requestAnimationFrame(tick);
@@ -370,6 +408,10 @@ elements.liveToggle.addEventListener("change", () => {
   if (elements.liveToggle.checked) setStatus("Live detection is on.");
   else setStatus("Live detection is paused; the video will keep playing.");
 });
+elements.fastModelToggle.addEventListener("change", () => {
+  lastDetections = [];
+  loadModel(elements.fastModelToggle.checked ? "int8" : "fp32");
+});
 
 for (const eventName of ["dragenter", "dragover"]) {
   elements.viewer.addEventListener(eventName, (event) => {
@@ -386,5 +428,4 @@ for (const eventName of ["dragleave", "drop"]) {
 elements.viewer.addEventListener("drop", (event) => handleFile(event.dataTransfer.files[0]));
 window.addEventListener("beforeunload", releaseCurrentSource);
 
-showLoading("Loading model", "Downloading the ONNX window detector…");
 loadModel();

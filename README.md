@@ -30,7 +30,8 @@ and model are loaded; browser caching makes later visits faster.
 ## Files
 
 - `best.pt` — original Ultralytics model weights
-- `best.onnx` — exported browser model, input `1×3×640×640`, output `1×300×6`
+- `best.onnx` — full-quality FP32 browser model, input `1×3×640×640`, output `1×300×6`
+- `best.int8.onnx` — mixed INT8 performance model; later detection-sensitive layers remain FP32
 - `index.html` — accessible application structure
 - `styles.css` — responsive presentation
 - `app.js` — media capture, preprocessing, ONNX inference, and bounding-box rendering
@@ -46,6 +47,15 @@ yolo export model=best.pt format=onnx imgsz=640 opset=12 simplify=False dynamic=
 The JavaScript postprocessor expects the end-to-end model output `[batch, 300, 6]`, where each row is
 `[x1, y1, x2, y2, confidence, class]`. If the architecture or export format changes, update
 `parseDetections()` in `app.js`.
+
+Create the calibrated performance model from representative images in `images/`:
+
+```bash
+python tools/quantize_model.py
+```
+
+The site starts in Fast INT8 mode and provides a control to switch to the original FP32 model when
+maximum detection quality matters more than speed.
 
 ## Privacy and browser support
 

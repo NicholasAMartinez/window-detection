@@ -124,6 +124,19 @@
             </div>
           </div>
 
+          <div class="control-group compact">
+            <div class="control-label">
+              <div>
+                <label for="fastModelToggle">Fast INT8 model</label>
+                <p>Faster and smaller, with a possible accuracy trade-off.</p>
+              </div>
+              <label class="switch">
+                <input id="fastModelToggle" type="checkbox" checked />
+                <span></span>
+              </label>
+            </div>
+          </div>
+
           <div class="stats" aria-live="polite">
             <div><span>Windows found</span><strong id="detectionCount">—</strong></div>
             <div><span>Inference time</span><strong id="inferenceTime">—</strong></div>
@@ -132,7 +145,7 @@
 
           <div class="model-info">
             <span class="window-swatch"></span>
-            <div><strong>Window</strong><small>YOLO · ONNX · 640 × 640</small></div>
+            <div><strong>Window</strong><small id="modelDescription">YOLO · ONNX INT8 · 640 × 640</small></div>
           </div>
 
           <p id="statusMessage" class="status-message" role="status">
